@@ -83,7 +83,7 @@ def check_nat_gateway(rg_name, vnet_name):
         print(f"[RESULT] No NAT Gateway found in VNet '{vnet_name}' of resource group '{rg_name}'.")
         return
 
-    subprocess.run(['az', 'network', 'vnet', 'subnet', 'list', '--resource-group', rg_name, '--vnet-name', vnet_name, '--query', 'contains(@[].serviceEndpoints[].serviceName, `Microsoft.Network/natGateways`)', '-o', 'json'])
+    #subprocess.run(['az', 'network', 'vnet', 'subnet', 'list', '--resource-group', rg_name, '--vnet-name', vnet_name, '--query', 'contains(@[].serviceEndpoints[].serviceName, `Microsoft.Network/natGateways`)', '-o', 'json'])
     for nat_gateway_name in [ng['Name'] for ng in json.loads(nat_gateway_info.stdout)]:
         print("NAT Gateway: ")
         print(f"[RESULT] NAT Gateway: {nat_gateway_name}")
