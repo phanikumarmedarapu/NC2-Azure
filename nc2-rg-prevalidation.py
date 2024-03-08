@@ -41,7 +41,7 @@ def check_vnet_peering(rg_name, vnet_name):
         print("Entries found with 'peeringState' and 'type' as 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings':")
         with open('vnet_peering.txt', 'w') as file:
             json.dump(json.loads(output_peer.stdout), file, indent=4)
-        print("[RESULT] vnet peering to :")
+        print(f"[RESULT] vnet {vnet_name} peering to :")
         subprocess.run(['grep', 'peeringState', '-B1', '-A5', 'vnet_peering.txt'])
         print("")
     else:
