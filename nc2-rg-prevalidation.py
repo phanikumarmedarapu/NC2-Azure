@@ -1,11 +1,13 @@
+# Author : Andrew Nam
 # Date : 2024Mar08
 # source : natgw_publicip_tag_RG_all_4-3.sh
 # Goal : convert natgw_publicip_tag_RG_all_4-2.sh to python
 # fixed :
-# 1. nat gateway per vnet
+# 1. nat gateway info - Provisioning State, subnet, public ip, tags
 # 2. delegation info included
 # 3. dns per vnet
 # 4. minor format improvement made
+
 
 import subprocess
 import json
@@ -82,33 +84,39 @@ def check_nsg_association(rg_name, vnet_name):
         else:
             print(f"Subnet '{subnet}': NSG '{nsg}' associated")
 
-def check_nat_gateway(rg_name, vnet_name):
-    nat_gateway_info = subprocess.run(['az', 'network', 'nat', 'gateway', 'list', '--resource-group', rg_name, '--query', "[?provisioningState=='Succeeded'].{Name:name}", '--output', 'json'], capture_output=True, text=True)
-    print(" ")
-    print(" ")
-    print(" ")
-    if not nat_gateway_info.stdout:
-        print(f"[RESULT] No NAT Gateway found in VNet '{vnet_name}' of resource group '{rg_name}'.")
-        return
+def check_nat_gateway(rg_name):
+    # Check if NAT Gateway is configured
+    nat_gateway_list_command = f"az network nat gateway list -g {rg_name}"
+    try:
+        nat_gateways_output = subprocess.check_output(nat_gateway_list_command, shell=True)
+        nat_gateways = json.loads(nat_gateways_output)
 
-    #subprocess.run(['az', 'network', 'vnet', 'subnet', 'list', '--resource-group', rg_name, '--vnet-name', vnet_name, '--query', 'contains(@[].serviceEndpoints[].serviceName, `Microsoft.Network/natGateways`)', '-o', 'json'])
-    for nat_gateway_name in [ng['Name'] for ng in json.loads(nat_gateway_info.stdout)]:
-        print("NAT Gateway: ")
-        print(f"[RESULT] NAT Gateway: {nat_gateway_name}")
-
-        public_ip = subprocess.run(['az', 'network', 'nat', 'gateway', 'show', '--resource-group', rg_name, '--name', nat_gateway_name, '--query', 'publicIpAddresses[0].id', '--output', 'tsv'], capture_output=True, text=True).stdout
-        if public_ip:
-            print(f"[RESULT] Public IP is assigned to NAT gateway '{nat_gateway_name}'.")
+        if len(nat_gateways) > 0:
+            print("NAT Gateway is configured.")
+            print("")
+            #print(f"NAT Gateway Subnet ID: {nat_gateways[0].get('subnet', {}).get('id')}")
+            for entry in nat_gateways:
+                print("[RESULT] NAT Gateway Information ")
+                print(f"Name: {entry['name']}")
+                print(f"Provisioning State: {entry['provisioningState']}")
+                print("")
+                print(f"Public IP Address ID: {entry['publicIpAddresses'][0]['id']}")
+                print("")
+                print(f"Subnet ID: {entry['subnets'][0]['id']}")
+                print("")
+                print("Tags:")
+                tags = entry.get('tags', {})
+                fastpath_enabled = tags.get('fastpathenabled', 'Unknown')
+                print(f"FastPathEnabled: {fastpath_enabled}")
+                print("")
+                print("")
+                print("")
         else:
-            print(f"[RESULT] No public IP assigned to NAT gateway '{nat_gateway_name}'.")
+            print("NAT Gateway list is empty.")
+    except subprocess.CalledProcessError as e:
+        print("Error occurred while retrieving NAT gateways.")
+        print(e.output.decode("utf-8"))
 
-        fastpath_enabled = subprocess.run(['az', 'network', 'nat', 'gateway', 'show', '--resource-group', rg_name, '--name', nat_gateway_name, '--query', 'tags.fastpathenabled', '--output', 'tsv'], capture_output=True, text=True).stdout.strip()
-        if fastpath_enabled == "True":
-            print(f"[RESULT] NAT gateway '{nat_gateway_name}' has tag 'fastpathenabled' set to 'True'.")
-            print(" ")
-        else:
-            print(f"[RESULT] NAT gateway '{nat_gateway_name}' does not have tag 'fastpathenabled' set to 'True'.")
-            print(" ")
 
 def main():
     # Prompt user for resource group name
@@ -157,7 +165,7 @@ def main():
             check_nsg_association(resource_group, vnet_name)
 
         # Check NAT Gateway
-        check_nat_gateway(resource_group, vnet_name)
+        check_nat_gateway(resource_group)
 
 
 # Run the main function
