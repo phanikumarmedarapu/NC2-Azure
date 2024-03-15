@@ -1,5 +1,7 @@
+# source : https://github.com/nutanix-core/nc2-deployment-wizard/blob/static_validations_rohan/src/nc2_deployment_wizard/static_checks/nc2-rg-prevalidation_sdk.py
 # Date:2024Mar13
 # Author : Andrew Nam
+# Co-Author : Rohan Tiwari
 # Step1 : First, make sure you've installed the necessary Azure SDK packages:
 #        pip install azure-mgmt-network azure-identity
 # Step2. Please replace **`<your-subscription-id>`** with your actual subscription ID.
@@ -8,8 +10,26 @@
 
 from azure.identity import DefaultAzureCredential
 from azure.mgmt.network import NetworkManagementClient
+from azure.core.exceptions import ClientAuthenticationError
+from azure.mgmt.resource import ResourceManagementClient
 import json
 import os
+
+
+
+client_id=os.environ["AZURE_CLIENT_ID"]
+client_secret=os.environ["AZURE_CLIENT_SECRET"]
+tenant_id=os.environ["AZURE_TENANT_ID"]
+subscription_id=os.environ["AZURE_SUBSCRIPTION_ID"]
+customer_resource_group = "rm_ntnx_test_rg"
+region = "eastus"
+# Azure authentication
+credential = DefaultAzureCredential()
+
+# Initialize network management client
+network_client = NetworkManagementClient(credential, subscription_id)
+
+resource_client = ResourceManagementClient(credential, subscription_id)
 
 def get_subnet_info(network_client, rg_name, vnet_name):
     subnet_list = network_client.subnets.list(rg_name, vnet_name)
@@ -27,11 +47,9 @@ def check_subnet_delegation(network_client, rg_name, vnet_name):
         if subnet.delegations:
             print(" ")
             print(" ")
-            print(f"[RESULT] Microsoft.BareMetal.AzureHostedService subnet delegation found for {vnet_name}:")
-            with open('subnet_delegate.txt', 'w') as file:
-                json.dump(subnet.serialize(), file, indent=4)
+            print(f"[RESULT] {subnet.delegations[0].name} subnet delegation found for {vnet_name} for subnet {subnet.name}:")
             print("[RESULT] subnet delegate to :")
-            print(json.dumps(subnet.delegations.serialize(), indent=4))
+            print(json.dumps(subnet.delegations[0].serialize(), indent=4))
             print("")
         else:
             print(" ")
@@ -45,8 +63,6 @@ def check_vnet_peering(network_client, rg_name, vnet_name):
         print(" ")
         print(" ")
         print("Entries found with 'peeringState' as 'Connected':")
-        with open('vnet_peering.txt', 'w') as file:
-            json.dump([peering.serialize() for peering in peering_list if peering.peering_state], file, indent=4)
         print(f"[RESULT] vnet {vnet_name} peering to :")
         print(json.dumps([peering.serialize() for peering in peering_list if peering.peering_state], indent=4))
         print("")
@@ -109,63 +125,54 @@ def check_nat_gateway(network_client, rg_name, vnet_name):
             print(f"[RESULT] NAT gateway '{nat_gateway.name}' does not have tag 'fastpathenabled' set to 'True'.")
             print(" ")
 
-def main():
-    # Azure authentication
-    credential = DefaultAzureCredential()
-
-    # Specify your subscription ID
-    subscription_id = "<your-subscription-id>"
-
-    # Initialize network management client
-    network_client = NetworkManagementClient(credential, subscription_id)
-
-    # Prompt user for resource group name
-    resource_group = input("Enter the Azure Resource Group name: ")
-
-    # Check if the resource group exists
-    resource_group_exists = network_client.resource_groups.check_existence(resource_group)
+def check_resource_group(resource_client, rg_name):
+    resource_group_exists = resource_client.resource_groups.check_existence(rg_name)
     if not resource_group_exists:
-        print(f"Resource group '{resource_group}' does not exist.")
+        print(f"Resource group '{rg_name}' does not exist.")
         exit(1)
 
+def main():
+    # Check if the resource group exists
+    check_resource_group(resource_client, customer_resource_group)
     # Get the list of VNets in the specified resource group
-    vnets = network_client.virtual_networks.list(resource_group)
+    vnets = network_client.virtual_networks.list(customer_resource_group)
 
     # Check if there are any VNets in the resource group
     if not vnets:
-        print(f"No VNets found in resource group '{resource_group}'.")
+        print(f"No VNets found in resource group '{customer_resource_group}'.")
     else:
         print(" ")
         print(" ")
-        print(f"VNets found in resource group '{resource_group}':")
+        print(f"VNets found in resource group '{customer_resource_group}':")
         # Iterate over each VNet in the list
         for vnet in vnets:
             print(" ")
             print(" ")
             print("======================")
             print(f"VNet: {vnet.name}")
+            print(f"Resource GUID: {vnet.resource_guid}")
             print(" ")
             # Get subnet information for the current VNet
-            subnet_info = get_subnet_info(network_client, resource_group, vnet.name)
+            subnet_info = get_subnet_info(network_client, customer_resource_group, vnet.name)
 
             # Print subnet information
             print("Subnet")
-            print(f"[RESULT] {json.dumps(subnet_info, indent=4)} : ")
+            print(f"[RESULT] : {json.dumps(subnet_info, indent=4)}")
 
             # Check subnet delegation
-            check_subnet_delegation(network_client, resource_group, vnet.name)
+            check_subnet_delegation(network_client, customer_resource_group, vnet.name)
 
             # Check VNet peering
-            check_vnet_peering(network_client, resource_group, vnet.name)
+            check_vnet_peering(network_client, customer_resource_group, vnet.name)
 
             # Check DNS servers
-            check_dns_servers(network_client, resource_group, vnet.name)
+            check_dns_servers(network_client, customer_resource_group, vnet.name)
 
             # Check NSG association
-            check_nsg_association(network_client, resource_group, vnet.name)
+            check_nsg_association(network_client, customer_resource_group, vnet.name)
 
-        # Check NAT Gateway
-        check_nat_gateway(network_client, resource_group, vnet.name)
+            # Check NAT Gateway
+            check_nat_gateway(network_client, customer_resource_group, vnet.name)
 
 # Run the main function
 if __name__ == "__main__":
